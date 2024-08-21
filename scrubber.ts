@@ -35,10 +35,6 @@ function appendLog(payload: any) {
 let migrated = 0;
 let alreadyExists = 0;
 
-async function deleteUser(id: string) {
-    return 
-}
-
 async function processUserToClerk(user: User, spinner: Ora) {
   const txt = spinner.text;
   try {
@@ -55,6 +51,9 @@ async function processUserToClerk(user: User, spinner: Ora) {
         // This user does not exist in our database but exists in Clerk, delete them
         await clerkClient.users.deleteUser(user.id)
     }
+
+    // super-scrub: delete everyone
+    // await clerkClient.users.deleteUser(user.id)
 
     migrated++;
   } catch (error) {
