@@ -33,15 +33,14 @@ const userSchema = z.object({
 
 type User = z.infer<typeof userSchema>;
 
-const createUser = (userData: User) => {
+const splitName = (
+  name: string | undefined
+): [string | undefined, string | undefined] => {
   let firstName: string | undefined = undefined;
   let lastName: string | undefined = undefined;
 
-  // Attempt to split the name into first and last
-  // Work around a weird bug in the csv converter's handling of empty strings
-  let name = userData.name
-  if (name === "\"") {
-    name = undefined
+  if (name === '"') {
+    return [undefined, undefined];
   }
   const trimmed = name?.trim();
   const nameParts = trimmed?.split(" ") || [];
@@ -51,8 +50,14 @@ const createUser = (userData: User) => {
     lastName = nameParts[1];
   } else {
     // Punt! Put it in the `firstName` and let them fix it in the app.
-    firstName = trimmed
+    firstName = trimmed;
   }
+
+  return [firstName, lastName];
+};
+
+const createUser = (userData: User) => {
+  const [firstName, lastName] = splitName(userData.name);
 
   return clerkClient.users.createUser({
     externalId: userData.userId,
@@ -66,6 +71,32 @@ const createUser = (userData: User) => {
   });
 };
 
+const updateUser = async (userData: User) => {
+  const response = await clerkClient.users.getUserList({
+    emailAddress: [userData.email],
+  });
+
+  if (response && response.data.length > 0) {
+    const existing = response.data[0];
+    const [firstName, lastName] = splitName(userData.name);
+    if (
+      existing.externalId !== userData.userId ||
+      existing.firstName !== firstName ||
+      existing.lastName !== lastName ||
+      existing.publicMetadata.agreedTerms !== userData.agreedTerms
+    ) {
+      return clerkClient.users.updateUser(response.data[0].id, {
+        externalId: userData.userId,
+        firstName,
+        lastName,
+        publicMetadata: {
+          agreedTerms: userData.agreedTerms,
+        },
+      });
+    }
+  }
+};
+
 const now = new Date().toISOString().split(".")[0]; // YYYY-MM-DDTHH:mm:ss
 function appendLog(payload: any) {
   fs.appendFileSync(
@@ -75,7 +106,7 @@ function appendLog(payload: any) {
 }
 
 let migrated = 0;
-let alreadyExists = 0;
+let updated = 0;
 
 async function processUserToClerk(userData: User, spinner: Ora) {
   const txt = spinner.text;
@@ -89,8 +120,13 @@ async function processUserToClerk(userData: User, spinner: Ora) {
     migrated++;
   } catch (error) {
     if (error.status === 422) {
-      appendLog({ userId: userData.userId, ...error });
-      alreadyExists++;
+      const parsedUserData = userSchema.safeParse(userData);
+      if (parsedUserData.success) {
+        const up = await updateUser(parsedUserData.data)
+        if (up) {
+          updated++;
+        }
+      }
       return;
     }
 
@@ -146,5 +182,5 @@ async function main() {
 
 main().then(() => {
   console.log(`${migrated} users migrated`);
-  console.log(`${alreadyExists} users failed to upload`);
+  console.log(`${updated} users updated`);
 });
