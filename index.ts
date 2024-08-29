@@ -28,6 +28,7 @@ const userSchema = z.object({
   userId: z.string(),
   email: z.string().email(),
   name: z.string().optional(),
+  location: z.string().optional(),
   agreedTerms: z.boolean(),
 });
 
@@ -58,6 +59,10 @@ const splitName = (
 
 const createUser = (userData: User) => {
   const [firstName, lastName] = splitName(userData.name);
+  let org = userData.location
+  if (org === '"') {
+    org = undefined
+  }
 
   return clerkClient.users.createUser({
     externalId: userData.userId,
@@ -66,7 +71,12 @@ const createUser = (userData: User) => {
     lastName,
     skipPasswordRequirement: true,
     publicMetadata: {
+      // Migrate whether they agreed to TOC already
       agreedTerms: userData.agreedTerms,
+      // We don't currently store the email consent in the DB, default to false
+      emailConsent: false,
+      // "location" goes here
+      org,
     },
   });
 };
@@ -79,11 +89,17 @@ const updateUser = async (userData: User) => {
   if (response && response.data.length > 0) {
     const existing = response.data[0];
     const [firstName, lastName] = splitName(userData.name);
+    let org = userData.location
+    if (org === '"') {
+      org = undefined
+    }
     if (
       existing.externalId !== userData.userId ||
       existing.firstName !== firstName ||
       existing.lastName !== lastName ||
-      existing.publicMetadata.agreedTerms !== userData.agreedTerms
+      existing.publicMetadata.agreedTerms !== userData.agreedTerms ||
+      existing.publicMetadata.org !== org ||
+      existing.createOrganizationEnabled
     ) {
       return clerkClient.users.updateUser(response.data[0].id, {
         externalId: userData.userId,
@@ -91,7 +107,12 @@ const updateUser = async (userData: User) => {
         lastName,
         publicMetadata: {
           agreedTerms: userData.agreedTerms,
+          emailConsent: false,
+          org
         },
+        // TODO: sync these with the new user settings using API?
+        createOrganizationEnabled: false,
+        deleteSelfEnabled: false
       });
     }
   }
