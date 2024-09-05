@@ -10,7 +10,9 @@
     "start": "bun index.ts",
     "convert": "bun convert.ts",
     "scrub": "bun scrubber.ts",
-    "teams": "bun migrate_teams.ts"
+    "teams": "bun migrate_teams.ts",
+    "org_ids": "bun org_ids/orgs_get_ids.ts",
+    "compare": "bun org_ids/compare.ts"
   },
   "dependencies": {
     "@clerk/clerk-sdk-node": "5.0.33-snapshot.v61b1f16",
