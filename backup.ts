@@ -3,7 +3,7 @@ config();
 
 import * as fs from "fs";
 import { createObjectCsvStringifier } from "csv-writer";
-import { clerkClient, User } from "@clerk/clerk-sdk-node";
+import { clerkClient, Organization, User } from "@clerk/clerk-sdk-node";
 import ora from "ora";
 
 const SECRET_KEY = process.env.CLERK_SECRET_KEY;
@@ -14,9 +14,10 @@ if (!SECRET_KEY) {
   );
 }
 
-let backedUp = 0;
+let backedUpUsers = 0;
+let backedUpOrgs = 0;
 
-type CSVRecord = {
+type UserCSVRecord = {
   id: string;
   externalId?: string;
   firstName?: string;
@@ -30,12 +31,25 @@ type CSVRecord = {
   externalAccounts: string
 };
 
-type Header = {
-  id: keyof CSVRecord;
+type OrgCSVRecord = {
+    id: string;
+    name: string;
+    slug?: string;
+    maxAllowedMembers: number;
+    creatorId: string;
+}
+
+type UserCSVHeader = {
+  id: keyof UserCSVRecord;
   title: string;
 };
 
-const HEADERS: Header[] = [
+type OrgCSVHeader = {
+    id: keyof OrgCSVRecord;
+    title: string;
+}
+
+const USER_HEADERS: UserCSVHeader[] = [
   { id: "id", title: "User ID" },
   { id: "externalId", title: "Database ID" },
   { id: "email", title: "Primary Email Address" },
@@ -49,12 +63,27 @@ const HEADERS: Header[] = [
   { id: "externalAccounts", title: "External Account Data" }
 ];
 
+const ORG_HEADERS: OrgCSVHeader[] = [
+    { id: "id", title: "Org ID" },
+    { id: "name", title: "Name" },
+    { id: "slug", title: "Slug" },
+    { id: "maxAllowedMembers", title: "Member Limit" },
+    { id: "creatorId", title: "Creator User ID" },
+]
+
 const now = new Date().toISOString().split(".")[0]; // YYYY-MM-DDTHH:mm:ss
-function appendCSV(payload: string | null) {
+function appendUserCsv(payload: string | null) {
   fs.appendFileSync(
     `./user-backup-${now}.csv`,
     payload || ""
   );
+}
+
+function appendOrgCsv(payload: string | null) {
+    fs.appendFileSync(
+        `./org-backup-${now}.csv`,
+        payload || ""
+      );
 }
 
 async function main() {
@@ -63,15 +92,15 @@ async function main() {
   const spinner = ora(`Retrieving users`).start();
   let offset = 0;
   const limit = 500;
-  const response = await clerkClient.users.getUserList({
+  const userResponse = await clerkClient.users.getUserList({
     limit,
     orderBy: "+created_at",
   });
   // The API has a limit of 500 users so this will have to be paginated
-  let users: User[] = response.data;
+  let users: User[] = userResponse.data;
   spinner.suffixText = users.length.toLocaleString();
-  let total = response.totalCount;
-  let hasMoreUsers = total > users.length;
+  let totalUsers = userResponse.totalCount;
+  let hasMoreUsers = totalUsers > users.length;
   while (hasMoreUsers) {
     offset = offset + limit;
     const nextBatch = await clerkClient.users.getUserList({
@@ -81,13 +110,13 @@ async function main() {
     });
     users.push(...nextBatch.data);
     spinner.suffixText = users.length.toLocaleString();
-    hasMoreUsers = total > users.length;
+    hasMoreUsers = totalUsers > users.length;
   }
 
-  spinner.start(`Exporting CSV`);
+  spinner.start(`Exporting User CSV`);
   spinner.suffixText = "";
 
-  const records: CSVRecord[] = users.map((u, i) => {
+  const userRecords: UserCSVRecord[] = users.map((u, i) => {
     spinner.suffixText = i.toLocaleString();
     return {
       id: u.id,
@@ -104,22 +133,66 @@ async function main() {
     };
   });
 
-  const csvWriter = createObjectCsvStringifier({
-    header: HEADERS,
+  const userCsvWriter = createObjectCsvStringifier({
+    header: USER_HEADERS,
   });
-
-  appendCSV(csvWriter.getHeaderString())
-  records.forEach((r, i) => {
+  appendUserCsv(userCsvWriter.getHeaderString())
+  userRecords.forEach((r, i) => {
     spinner.suffixText = i.toLocaleString();
-    appendCSV(csvWriter.stringifyRecords([r]))
-    backedUp++
+    appendUserCsv(userCsvWriter.stringifyRecords([r]))
+    backedUpUsers++
   })
 
+  spinner.start(`Retrieving Orgs`)
   spinner.suffixText = "";
+  offset = 0;
+  const orgResponse = await clerkClient.organizations.getOrganizationList({ limit, orderBy: "+created_at" })
+  // The API has a limit of 500 orgs so this will have to be paginated
+  let orgs: Organization[] = orgResponse.data;
+  spinner.suffixText = orgs.length.toLocaleString();
+  let totalOrgs = orgResponse.totalCount;
+  let hasMoreOrgs = totalOrgs > orgs.length;
+  while (hasMoreOrgs) {
+    offset = offset + limit;
+    const nextBatch = await clerkClient.organizations.getOrganizationList({
+      offset,
+      limit,
+      orderBy: "+created_at",
+    });
+    orgs.push(...nextBatch.data);
+    spinner.suffixText = orgs.length.toLocaleString();
+    hasMoreOrgs = totalUsers > orgs.length;
+  }
+
+  spinner.start(`Exporting Org CSV`);
+  spinner.suffixText = "";
+
+  const orgRecords: OrgCSVRecord[] = orgs.map((o, i) => {
+    spinner.suffixText = i.toLocaleString();
+    return {
+      id: o.id,
+      name: o.name,
+      slug: o.slug || undefined,
+      maxAllowedMembers: o.maxAllowedMemberships,
+      creatorId: o.createdBy
+    };
+  });
+
+  const orgCsvWriter = createObjectCsvStringifier({
+    header: ORG_HEADERS,
+  });
+  appendOrgCsv(orgCsvWriter.getHeaderString())
+  orgRecords.forEach((r, i) => {
+    spinner.suffixText = i.toLocaleString();
+    appendOrgCsv(orgCsvWriter.stringifyRecords([r]))
+    backedUpOrgs++
+  })
+
   spinner.succeed(`Backup complete`);
   return;
 }
 
 main().then(() => {
-  console.log(`${backedUp} users backed up`);
+  console.log(`${backedUpUsers} users backed up`);
+  console.log(`${backedUpOrgs} organizations backed up`)
 });

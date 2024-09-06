@@ -38,22 +38,8 @@ let alreadyExists = 0;
 async function processUserToClerk(user: User, spinner: Ora) {
   const txt = spinner.text;
   try {
-    // inspect the user's data
-    const hasExternalId = !!user.externalId
-    const hasCorrectMetadata = !!(user.publicMetadata["agreedTerms"] === false || user.publicMetadata["agreedTerms"] === true)
-
-    if (hasExternalId) {
-        // This user should exist in our database, so they may only need correction to metadata
-        if (!hasCorrectMetadata) {
-            await clerkClient.users.updateUserMetadata(user.id, { publicMetadata: { agreedTerms: false } })
-        }
-    } else {
-        // This user does not exist in our database but exists in Clerk, delete them
-        await clerkClient.users.deleteUser(user.id)
-    }
-
-    // super-scrub: delete everyone
-    // await clerkClient.users.deleteUser(user.id)
+    const setting = true; // what are we going to set these things to?
+    await clerkClient.users.updateUser(user.id, { createOrganizationEnabled: setting, deleteSelfEnabled: setting })
 
     migrated++;
   } catch (error) {
@@ -101,7 +87,6 @@ async function main() {
     hasMoreUsers = total > users.length
   }
   console.log(total)
-  console.log(hasMoreUsers)
 
   let i = 0;
   const spinner = ora(`Migrating users`).start();
