@@ -112,9 +112,9 @@ async function main() {
   records.forEach((r, i) => {
     spinner.suffixText = i.toLocaleString();
     appendCSV(csvWriter.stringifyRecords([r]))
+    backedUp++
   })
 
-  backedUp = parseInt(spinner.suffixText)
   spinner.suffixText = "";
   spinner.succeed(`Backup complete`);
   return;
