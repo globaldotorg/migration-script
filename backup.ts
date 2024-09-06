@@ -110,7 +110,7 @@ function appendOrgMembershipCsv(payload: string | null) {
 }
 
 async function main() {
-  console.log(`Clerk User Backup Utility`);
+  console.log(`Clerk Backup Utility`);
 
   const spinner = ora(`Retrieving users`).start();
   let offset = 0;
