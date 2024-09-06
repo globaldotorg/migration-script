@@ -14,7 +14,7 @@
     "teams": "bun migrate_teams.ts"
   },
   "dependencies": {
-    "@clerk/clerk-sdk-node": "5.0.33-snapshot.v61b1f16",
+    "@clerk/clerk-sdk-node": "5.0.35",
     "bun": "^1.0.12",
     "convert-csv-to-json": "^2.48.0",
     "csv-writer": "^1.6.0",
