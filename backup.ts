@@ -27,6 +27,7 @@ type CSVRecord = {
   canCreateOrg: boolean;
   banned: boolean;
   locked: boolean;
+  externalAccounts: string
 };
 
 type Header = {
@@ -44,7 +45,8 @@ const HEADERS: Header[] = [
   { id: "canDeleteSelf", title: "Delete Account Enabled" },
   { id: "canCreateOrg", title: "Create Org Enabled" },
   { id: "banned", title: "Banned" },
-  { id: "locked", title: "Locked" }
+  { id: "locked", title: "Locked" },
+  { id: "externalAccounts", title: "External Account Data" }
 ];
 
 const now = new Date().toISOString().split(".")[0]; // YYYY-MM-DDTHH:mm:ss
@@ -94,10 +96,11 @@ async function main() {
       lastName: u.lastName || undefined,
       email: u.primaryEmailAddress?.emailAddress || "",
       publicMetadata: JSON.stringify(u.publicMetadata),
-      canDeleteSelf: false, // TODO: Not plumbed in either?!
+      canDeleteSelf: true, // TODO: Not plumbed in either?!
       canCreateOrg: u.createOrganizationEnabled,
       banned: u.banned,
-      locked: u.locked
+      locked: u.locked,
+      externalAccounts: JSON.stringify(u.externalAccounts)
     };
   });
 
