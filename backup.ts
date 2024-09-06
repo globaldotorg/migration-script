@@ -220,7 +220,7 @@ async function main() {
 
   for await (const o of orgs) {
     spinner.suffixText = `[org: ${o.name}]`
-    // The API has a limit of 500 orgs so this will have to be paginated
+    // The API has a limit of 500 memberships so this will have to be paginated
     let orgMemberships: OrganizationMembership[] = [];
     let offset = 0;
     const limit = 500;
