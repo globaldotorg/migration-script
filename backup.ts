@@ -3,7 +3,12 @@ config();
 
 import * as fs from "fs";
 import { createObjectCsvStringifier } from "csv-writer";
-import { clerkClient, Organization, User } from "@clerk/clerk-sdk-node";
+import {
+  clerkClient,
+  Organization,
+  OrganizationMembership,
+  User,
+} from "@clerk/clerk-sdk-node";
 import ora from "ora";
 
 const SECRET_KEY = process.env.CLERK_SECRET_KEY;
@@ -16,6 +21,7 @@ if (!SECRET_KEY) {
 
 let backedUpUsers = 0;
 let backedUpOrgs = 0;
+let backedUpMemberships = 0;
 
 type UserCSVRecord = {
   id: string;
@@ -28,16 +34,23 @@ type UserCSVRecord = {
   canCreateOrg: boolean;
   banned: boolean;
   locked: boolean;
-  externalAccounts: string
+  externalAccounts: string;
 };
 
 type OrgCSVRecord = {
-    id: string;
-    name: string;
-    slug?: string;
-    maxAllowedMembers: number;
-    creatorId: string;
-}
+  id: string;
+  name: string;
+  slug?: string;
+  maxAllowedMembers: number;
+  creatorId: string;
+};
+
+type OrgMembershipCSVRecord = {
+  orgId: string;
+  orgName: string;
+  userId: string;
+  userEmail: string; // Technically the "user identifier," which is not the ID, but is usually email
+};
 
 type UserCSVHeader = {
   id: keyof UserCSVRecord;
@@ -45,9 +58,14 @@ type UserCSVHeader = {
 };
 
 type OrgCSVHeader = {
-    id: keyof OrgCSVRecord;
-    title: string;
-}
+  id: keyof OrgCSVRecord;
+  title: string;
+};
+
+type OrgMembershipCSVHeader = {
+  id: keyof OrgMembershipCSVRecord;
+  title: string;
+};
 
 const USER_HEADERS: UserCSVHeader[] = [
   { id: "id", title: "User ID" },
@@ -60,30 +78,35 @@ const USER_HEADERS: UserCSVHeader[] = [
   { id: "canCreateOrg", title: "Create Org Enabled" },
   { id: "banned", title: "Banned" },
   { id: "locked", title: "Locked" },
-  { id: "externalAccounts", title: "External Account Data" }
+  { id: "externalAccounts", title: "External Account Data" },
 ];
 
 const ORG_HEADERS: OrgCSVHeader[] = [
-    { id: "id", title: "Org ID" },
-    { id: "name", title: "Name" },
-    { id: "slug", title: "Slug" },
-    { id: "maxAllowedMembers", title: "Member Limit" },
-    { id: "creatorId", title: "Creator User ID" },
-]
+  { id: "id", title: "Org ID" },
+  { id: "name", title: "Name" },
+  { id: "slug", title: "Slug" },
+  { id: "maxAllowedMembers", title: "Member Limit" },
+  { id: "creatorId", title: "Creator User ID" },
+];
+
+const ORG_MEMBERSHIP_HEADERS: OrgMembershipCSVHeader[] = [
+  { id: "orgId", title: "Org ID" },
+  { id: "userId", title: "User ID" },
+  { id: "orgName", title: "Org Name"},
+  { id: "userEmail", title: "User Email (usually)"}
+];
 
 const now = new Date().toISOString().split(".")[0]; // YYYY-MM-DDTHH:mm:ss
 function appendUserCsv(payload: string | null) {
-  fs.appendFileSync(
-    `./user-backup-${now}.csv`,
-    payload || ""
-  );
+  fs.appendFileSync(`./user-backup-${now}.csv`, payload || "");
 }
 
 function appendOrgCsv(payload: string | null) {
-    fs.appendFileSync(
-        `./org-backup-${now}.csv`,
-        payload || ""
-      );
+  fs.appendFileSync(`./org-backup-${now}.csv`, payload || "");
+}
+
+function appendOrgMembershipCsv(payload: string | null) {
+  fs.appendFileSync(`./org-member-backup-${now}.csv`, payload || "");
 }
 
 async function main() {
@@ -129,24 +152,27 @@ async function main() {
       canCreateOrg: u.createOrganizationEnabled,
       banned: u.banned,
       locked: u.locked,
-      externalAccounts: JSON.stringify(u.externalAccounts)
+      externalAccounts: JSON.stringify(u.externalAccounts),
     };
   });
 
   const userCsvWriter = createObjectCsvStringifier({
     header: USER_HEADERS,
   });
-  appendUserCsv(userCsvWriter.getHeaderString())
+  appendUserCsv(userCsvWriter.getHeaderString());
   userRecords.forEach((r, i) => {
     spinner.suffixText = i.toLocaleString();
-    appendUserCsv(userCsvWriter.stringifyRecords([r]))
-    backedUpUsers++
-  })
+    appendUserCsv(userCsvWriter.stringifyRecords([r]));
+    backedUpUsers++;
+  });
 
-  spinner.start(`Retrieving Orgs`)
+  spinner.start(`Retrieving Orgs`);
   spinner.suffixText = "";
   offset = 0;
-  const orgResponse = await clerkClient.organizations.getOrganizationList({ limit, orderBy: "+created_at" })
+  const orgResponse = await clerkClient.organizations.getOrganizationList({
+    limit,
+    orderBy: "+created_at",
+  });
   // The API has a limit of 500 orgs so this will have to be paginated
   let orgs: Organization[] = orgResponse.data;
   spinner.suffixText = orgs.length.toLocaleString();
@@ -174,19 +200,71 @@ async function main() {
       name: o.name,
       slug: o.slug || undefined,
       maxAllowedMembers: o.maxAllowedMemberships,
-      creatorId: o.createdBy
+      creatorId: o.createdBy,
     };
   });
 
   const orgCsvWriter = createObjectCsvStringifier({
     header: ORG_HEADERS,
   });
-  appendOrgCsv(orgCsvWriter.getHeaderString())
+  appendOrgCsv(orgCsvWriter.getHeaderString());
   orgRecords.forEach((r, i) => {
     spinner.suffixText = i.toLocaleString();
-    appendOrgCsv(orgCsvWriter.stringifyRecords([r]))
-    backedUpOrgs++
-  })
+    appendOrgCsv(orgCsvWriter.stringifyRecords([r]));
+    backedUpOrgs++;
+  });
+
+  spinner.start(`Retrieving Org Memberships`);
+  spinner.suffixText = "";
+  let orgMemberRecords: OrgMembershipCSVRecord[] = [];
+
+  for await (const o of orgs) {
+    spinner.suffixText = `[org: ${o.name}]`
+    // The API has a limit of 500 orgs so this will have to be paginated
+    let orgMemberships: OrganizationMembership[] = [];
+    let offset = 0;
+    const limit = 500;
+    let hasMoreMemberships = false;
+    do {
+      const membersResponse =
+        await clerkClient.organizations.getOrganizationMembershipList({
+          limit,
+          offset,
+          organizationId: o.id,
+        });
+        orgMemberships.push(...membersResponse.data);
+      let orgTotalMembers = membersResponse.totalCount;
+      hasMoreMemberships = orgTotalMembers > orgMemberships.length;
+      offset = offset + limit;
+    } while (hasMoreMemberships);
+
+    orgMemberRecords.push(
+      ...orgMemberships
+        // For type-safety, filter out any memberships lacking user data
+        .filter((m) => !!m.publicUserData && !!m.publicUserData.userId)
+        .map((m) => {
+          return {
+            orgId: m.organization.id,
+            orgName: m.organization.name,
+            userId: m.publicUserData?.userId || "",
+            userEmail: m.publicUserData?.identifier || ""
+          };
+        })
+    );
+  }
+
+  spinner.start(`Exporting Org Membership CSV`);
+  spinner.suffixText = "";
+
+  const orgMembershipCsvWriter = createObjectCsvStringifier({
+    header: ORG_MEMBERSHIP_HEADERS,
+  });
+  appendOrgMembershipCsv(orgMembershipCsvWriter.getHeaderString());
+  orgMemberRecords.forEach((r, i) => {
+    spinner.suffixText = i.toLocaleString();
+    appendOrgMembershipCsv(orgMembershipCsvWriter.stringifyRecords([r]));
+    backedUpMemberships++;
+  });
 
   spinner.succeed(`Backup complete`);
   return;
@@ -194,5 +272,6 @@ async function main() {
 
 main().then(() => {
   console.log(`${backedUpUsers} users backed up`);
-  console.log(`${backedUpOrgs} organizations backed up`)
+  console.log(`${backedUpOrgs} organizations backed up`);
+  console.log(`${backedUpMemberships} organization memberships backed up`);
 });
