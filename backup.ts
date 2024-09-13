@@ -28,6 +28,7 @@ type UserCSVRecord = {
   externalId?: string;
   firstName?: string;
   lastName?: string;
+  createdAt: Date;
   email: string;
   publicMetadata: string;
   canDeleteSelf: boolean;
@@ -40,6 +41,7 @@ type UserCSVRecord = {
 type OrgCSVRecord = {
   id: string;
   name: string;
+  createdAt: Date;
   slug?: string;
   maxAllowedMembers: number;
   creatorId: string;
@@ -73,6 +75,7 @@ const USER_HEADERS: UserCSVHeader[] = [
   { id: "email", title: "Primary Email Address" },
   { id: "firstName", title: "First Name" },
   { id: "lastName", title: "Last Name" },
+  { id: "createdAt", title: "Created" },
   { id: "publicMetadata", title: "Public Metadata" },
   { id: "canDeleteSelf", title: "Delete Account Enabled" },
   { id: "canCreateOrg", title: "Create Org Enabled" },
@@ -85,6 +88,7 @@ const ORG_HEADERS: OrgCSVHeader[] = [
   { id: "id", title: "Org ID" },
   { id: "name", title: "Name" },
   { id: "slug", title: "Slug" },
+  { id: "createdAt", title: "Created At" },
   { id: "maxAllowedMembers", title: "Member Limit" },
   { id: "creatorId", title: "Creator User ID" },
 ];
@@ -115,9 +119,12 @@ async function main() {
   const spinner = ora(`Retrieving users`).start();
   let offset = 0;
   const limit = 500;
-  const userResponse = await clerkClient.users.getUserList({
+  const userParams: any = {
     limit,
-    orderBy: "+created_at",
+    orderBy: "-created_at",
+  }
+  const userResponse = await clerkClient.users.getUserList({
+    ...userParams
   });
   // The API has a limit of 500 users so this will have to be paginated
   let users: User[] = userResponse.data;
@@ -128,8 +135,7 @@ async function main() {
     offset = offset + limit;
     const nextBatch = await clerkClient.users.getUserList({
       offset,
-      limit,
-      orderBy: "+created_at",
+      ...userParams
     });
     users.push(...nextBatch.data);
     spinner.suffixText = users.length.toLocaleString();
@@ -146,9 +152,10 @@ async function main() {
       externalId: u.externalId || undefined,
       firstName: u.firstName || undefined,
       lastName: u.lastName || undefined,
+      createdAt: new Date(u.createdAt),
       email: u.primaryEmailAddress?.emailAddress || "",
       publicMetadata: JSON.stringify(u.publicMetadata),
-      canDeleteSelf: true, // TODO: Not plumbed in either?!
+      canDeleteSelf: u.deleteSelfEnabled,
       canCreateOrg: u.createOrganizationEnabled,
       banned: u.banned,
       locked: u.locked,
@@ -199,6 +206,7 @@ async function main() {
       id: o.id,
       name: o.name,
       slug: o.slug || undefined,
+      createdAt: new Date(o.createdAt),
       maxAllowedMembers: o.maxAllowedMemberships,
       creatorId: o.createdBy,
     };
@@ -261,7 +269,6 @@ async function main() {
   });
   appendOrgMembershipCsv(orgMembershipCsvWriter.getHeaderString());
   orgMemberRecords.forEach((r, i) => {
-    spinner.suffixText = i.toLocaleString();
     appendOrgMembershipCsv(orgMembershipCsvWriter.stringifyRecords([r]));
     backedUpMemberships++;
   });
