@@ -16,7 +16,7 @@
     "compare": "bun org_ids/compare.ts"
   },
   "dependencies": {
-    "@clerk/clerk-sdk-node": "5.0.37-snapshot.v2450f26",
+    "@clerk/clerk-sdk-node": "5.0.39",
     "bun": "^1.0.12",
     "convert-csv-to-json": "^2.48.0",
     "csv-writer": "^1.6.0",
