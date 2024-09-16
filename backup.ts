@@ -176,9 +176,12 @@ async function main() {
   spinner.start(`Retrieving Orgs`);
   spinner.suffixText = "";
   offset = 0;
-  const orgResponse = await clerkClient.organizations.getOrganizationList({
+  const orgParams: any = {
     limit,
-    orderBy: "+created_at",
+    orderBy: "+created_at"
+  }
+  const orgResponse = await clerkClient.organizations.getOrganizationList({
+    ...orgParams
   });
   // The API has a limit of 500 orgs so this will have to be paginated
   let orgs: Organization[] = orgResponse.data;
@@ -189,8 +192,7 @@ async function main() {
     offset = offset + limit;
     const nextBatch = await clerkClient.organizations.getOrganizationList({
       offset,
-      limit,
-      orderBy: "+created_at",
+      ...orgParams
     });
     orgs.push(...nextBatch.data);
     spinner.suffixText = orgs.length.toLocaleString();
