@@ -138,29 +138,23 @@ async function main() {
 
   const spinner = ora(`Retrieving users`).start();
   let offset = 0;
-  const limit = 500;
-  const userParams: any = {
-    limit,
-    orderBy: "-created_at",
-  }
-  const userResponse = await clerkClient.users.getUserList({
-    ...userParams
-  });
+  let limit = 500;
+  
   // The API has a limit of 500 users so this will have to be paginated
-  let users: User[] = userResponse.data;
+  let users: User[] = []
   spinner.suffixText = users.length.toLocaleString();
-  let totalUsers = userResponse.totalCount;
-  let hasMoreUsers = totalUsers > users.length;
-  while (hasMoreUsers) {
-    offset = offset + limit;
-    const nextBatch = await clerkClient.users.getUserList({
+  let hasMoreUsers = false
+  do {
+    const userResponse = await clerkClient.users.getUserList({
       offset,
-      ...userParams
+      limit,
+      orderBy: "-created_at",
     });
-    users.push(...nextBatch.data);
+    users.push(...userResponse.data);
     spinner.suffixText = users.length.toLocaleString();
-    hasMoreUsers = totalUsers > users.length;
-  }
+    hasMoreUsers = userResponse.totalCount > users.length;
+    offset = offset + limit;
+  } while (hasMoreUsers)
 
   spinner.start(`Exporting User CSV`);
   spinner.suffixText = "";
@@ -196,28 +190,20 @@ async function main() {
   spinner.start(`Retrieving Orgs`);
   spinner.suffixText = "";
   offset = 0;
-  const orgParams: any = {
-    limit,
-    orderBy: "+created_at"
-  }
-  const orgResponse = await clerkClient.organizations.getOrganizationList({
-    ...orgParams
-  });
   // The API has a limit of 500 orgs so this will have to be paginated
-  let orgs: Organization[] = orgResponse.data;
-  spinner.suffixText = orgs.length.toLocaleString();
-  let totalOrgs = orgResponse.totalCount;
-  let hasMoreOrgs = totalOrgs > orgs.length;
-  while (hasMoreOrgs) {
-    offset = offset + limit;
-    const nextBatch = await clerkClient.organizations.getOrganizationList({
+  let orgs: Organization[] = []
+  let hasMoreOrgs = false;
+  do {
+    const orgResponse = await clerkClient.organizations.getOrganizationList({
       offset,
-      ...orgParams
+      limit,
+      orderBy: "+created_at"
     });
-    orgs.push(...nextBatch.data);
+    orgs.push(...orgResponse.data);
     spinner.suffixText = orgs.length.toLocaleString();
-    hasMoreOrgs = totalUsers > orgs.length;
-  }
+    hasMoreOrgs = orgResponse.totalCount > orgs.length;
+    offset = offset + limit;
+  } while (hasMoreOrgs)
 
   spinner.start(`Exporting Org CSV`);
   spinner.suffixText = "";
