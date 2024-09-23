@@ -8,6 +8,7 @@
   "license": "ISC",
   "scripts": {
     "start": "bun index.ts",
+    "backup": "bun backup.ts",
     "convert": "bun convert.ts",
     "scrub": "bun scrubber.ts",
     "teams": "bun migrate_teams.ts",
@@ -15,9 +16,10 @@
     "compare": "bun org_ids/compare.ts"
   },
   "dependencies": {
-    "@clerk/clerk-sdk-node": "5.0.33-snapshot.v61b1f16",
+    "@clerk/clerk-sdk-node": "5.0.42",
     "bun": "^1.0.12",
     "convert-csv-to-json": "^2.48.0",
+    "csv-writer": "^1.6.0",
     "dotenv": "^16.3.1",
     "ora": "^7.0.1",
     "zod": "^3.22.4"
