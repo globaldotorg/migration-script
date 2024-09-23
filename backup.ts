@@ -45,6 +45,7 @@ type OrgCSVRecord = {
   slug?: string;
   maxAllowedMembers: number;
   creatorId: string;
+  domainsJson: string;
 };
 
 type OrgMembershipCSVRecord = {
@@ -91,6 +92,7 @@ const ORG_HEADERS: OrgCSVHeader[] = [
   { id: "createdAt", title: "Created At" },
   { id: "maxAllowedMembers", title: "Member Limit" },
   { id: "creatorId", title: "Creator User ID" },
+  { id: "domainsJson", title: "Domains" },
 ];
 
 const ORG_MEMBERSHIP_HEADERS: OrgMembershipCSVHeader[] = [
@@ -111,6 +113,24 @@ function appendOrgCsv(payload: string | null) {
 
 function appendOrgMembershipCsv(payload: string | null) {
   fs.appendFileSync(`./org-member-backup-${now}.csv`, payload || "");
+}
+
+// TODO: Replace this and getOrgDomains with a call to the Clerk Backend Client,
+// once they've updated it with the Org Domains endpoints
+function clerkOrgDomainUrl(orgId: string): string {
+  return `https://api.clerk.com/v1/organizations/${orgId}/domains`
+}
+
+async function getOrgDomains(orgId: string): Promise<{ domain: string, verified: boolean, mode: string }[]> {
+  const clerkRsp = await fetch(clerkOrgDomainUrl(orgId), {
+    headers: { Authorization: `Bearer ${SECRET_KEY}` }
+  })
+  const clerkObj = await clerkRsp.json()
+  const domains: { domain: string, verified: boolean, mode: string }[] = []
+  clerkObj.data.forEach((d: any) => {
+    domains.push({ domain: d.name, verified: d.verification?.status === "verified", mode: d.enrollment_mode })
+  })
+  return domains
 }
 
 async function main() {
@@ -202,8 +222,12 @@ async function main() {
   spinner.start(`Exporting Org CSV`);
   spinner.suffixText = "";
 
-  const orgRecords: OrgCSVRecord[] = orgs.map((o, i) => {
+  const orgRecords = await Promise.all(orgs.map(async (o, i) => {
     spinner.suffixText = i.toLocaleString();
+
+    // For each org, we need to make another request to get its domains
+    const domains = await getOrgDomains(o.id)
+
     return {
       id: o.id,
       name: o.name,
@@ -211,8 +235,9 @@ async function main() {
       createdAt: new Date(o.createdAt),
       maxAllowedMembers: o.maxAllowedMemberships,
       creatorId: o.createdBy,
+      domainsJson: JSON.stringify(domains)
     };
-  });
+  }));
 
   const orgCsvWriter = createObjectCsvStringifier({
     header: ORG_HEADERS,
